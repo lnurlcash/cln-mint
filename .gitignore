@@ -1,0 +1,6 @@
+/target/
+/tests/__pycache__/
+/tests/.venv/
+/venv/
+/result/
+*.sqlite3

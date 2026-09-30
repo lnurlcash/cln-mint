@@ -1,0 +1,7 @@
+plugin:
+  name: cln-mint
+  version: 0.1.0
+  lang: rust
+  install: |
+    cargo build --release && cp target/release/cln-mint . && cargo clean
+  main: cln-mint

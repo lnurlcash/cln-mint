@@ -1,0 +1,42 @@
+[package]
+name = "cln-mint"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+description = "LNURLcash mint (LUD-25 bearer notes, LUD-26 derivation and Lightning Address) as a Core Lightning plugin"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+log = "0.4"
+
+cln-plugin = "0.7"
+cln-rpc = "0.7"
+
+# 0.2.0, pinned by rev: early 0.x tracking a draft spec, and not on crates.io yet
+lnurlcash-core = { git = "https://github.com/lnurlcash/lnurlcash-core", rev = "bf0c932beae01ecaef604024b96bf66ca86034b1" }
+# the versions lnurlcash-core uses
+secp256k1 = "0.29"
+bech32 = "0.9"
+
+hex = "0.4"
+# libbitcoinkernel, loaded at runtime when cln-mint-bitcoinkernel names it
+libloading = "0.8"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+rand = "0.8"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["io-std", "macros", "net", "rt-multi-thread", "sync", "time"] }
+url = "2"
+
+[profile.optimized]
+inherits = "release"
+panic = "abort"
+strip = true
+codegen-units = 1
+lto = "fat"
+debug = false
+
