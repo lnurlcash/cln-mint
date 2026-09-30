@@ -17,18 +17,18 @@ cln-rpc = "0.7"
 # 0.2.0, pinned by rev: early 0.x tracking a draft spec, and not on crates.io yet
 lnurlcash-core = { git = "https://github.com/lnurlcash/lnurlcash-core", rev = "bf0c932beae01ecaef604024b96bf66ca86034b1" }
 # the versions lnurlcash-core uses
-secp256k1 = "0.29"
-bech32 = "0.9"
+secp256k1 = "0.33"
+bech32 = "0.11"
 
 hex = "0.4"
 # libbitcoinkernel, loaded at runtime when cln-mint-bitcoinkernel names it
 libloading = "0.8"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
-rand = "0.8"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rand = "0.9"
+rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 tokio = { version = "1", features = ["io-std", "macros", "net", "rt-multi-thread", "sync", "time"] }
 url = "2"
 
