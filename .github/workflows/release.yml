@@ -23,7 +23,10 @@ jobs:
         - name: Install cross-compilation dependencies
           run: |
             sudo apt update
-            sudo apt install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+            # C++ cross compilers, CMake and Boost headers: lnurlcash-kernel
+            # builds Bitcoin Core's kernel into the binary
+            sudo apt install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
+              g++-aarch64-linux-gnu g++-arm-linux-gnueabihf cmake ninja-build libboost-dev
 
         - name: Build Linux binaries (release)
           run: |
@@ -63,6 +66,9 @@ jobs:
           uses: dtolnay/rust-toolchain@stable
           with:
             targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+        - name: Install Boost headers (lnurlcash-kernel builds Bitcoin Core's kernel)
+          run: brew install boost ninja
 
         - name: Build macOS universal (release)
           id: build

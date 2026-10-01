@@ -12,7 +12,6 @@ use parse::get_startup_options;
 use tokio::io::{stdin, stdout};
 
 mod db;
-mod kernel;
 mod lnurl;
 mod mint;
 mod node;
@@ -40,10 +39,6 @@ const OPT_LISTEN: DefaultStringConfigOption = ConfigOption::new_str_with_default
 const OPT_DATABASE: StringConfigOption = ConfigOption::new_str_no_default(
     "cln-mint-database",
     "Path of the note database (default: <lightning-dir>/cln-mint.sqlite3)",
-);
-const OPT_BITCOINKERNEL: StringConfigOption = ConfigOption::new_str_no_default(
-    "cln-mint-bitcoinkernel",
-    "Path to libbitcoinkernel, to accept every tapscript leaf Bitcoin Core accepts",
 );
 const OPT_USERNAME: DefaultStringConfigOption = ConfigOption::new_str_with_default(
     "cln-mint-username",
@@ -125,7 +120,6 @@ async fn main() -> anyhow::Result<()> {
         .option(OPT_ONION_URL)
         .option(OPT_LISTEN)
         .option(OPT_DATABASE)
-        .option(OPT_BITCOINKERNEL)
         .option(OPT_USERNAME)
         .option(OPT_MIN_SENDABLE)
         .option(OPT_MAX_SENDABLE)

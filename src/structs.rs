@@ -9,7 +9,7 @@ use std::{
 use anyhow::{Result, bail};
 use tokio::sync::OnceCell;
 
-use crate::{db::NoteStore, kernel::Kernel, node::Node};
+use crate::{db::NoteStore, node::Node};
 
 /// Everything the HTTP handlers, RPC methods and background tasks share.
 #[derive(Debug, Clone)]
@@ -17,8 +17,6 @@ pub struct PluginState {
     pub settings: Arc<Settings>,
     pub store: Arc<NoteStore>,
     pub node: Node,
-    /// Bitcoin Core's interpreter, for leaves `lnurlcash-core` cannot judge.
-    pub kernel: Option<Arc<Kernel>>,
     pub listen_address: SocketAddr,
     /// This node's id: the `mintPubkey` certificates are signed with.
     pub node_id: Arc<OnceCell<String>>,
@@ -33,14 +31,12 @@ impl PluginState {
         settings: Settings,
         store: NoteStore,
         node: Node,
-        kernel: Option<Kernel>,
         listen_address: SocketAddr,
     ) -> Self {
         PluginState {
             settings: Arc::new(settings),
             store: Arc::new(store),
             node,
-            kernel: kernel.map(Arc::new),
             listen_address,
             node_id: Arc::new(OnceCell::new()),
             in_flight_melts: Arc::new(Mutex::new(HashMap::new())),

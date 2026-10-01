@@ -1,15 +1,13 @@
 //! LUD-25 spends: which note a `k1` names, and whether it opens it here.
 //!
-//! Decoding, the key path, the bearer hashlock, leaf rules and time claims
-//! are `lnurlcash-core`'s. Any other tapscript leaf is handed to Bitcoin
-//! Core's own interpreter when `cln-mint-bitcoinkernel` loads it (see
-//! `kernel.rs`); without it such a spend is refused rather than guessed at.
+//! `lnurlcash-core` decodes the spend and applies the mint's own rules: the
+//! leaf version and `OP_SUCCESSx` refusal, and time claims against the mint's
+//! clock. Whether the witness opens `Q` is Bitcoin Core's call, through
+//! `lnurlcash-kernel`, for every key path and every leaf, as lnurl-mint does.
 
-use lnurlcash_core::spend::{Spend, SpendVerdict, check_spend, check_time_claim, decode_spend};
+use lnurlcash_core::spend::{Spend, check_leaf, check_time_claim, decode_spend};
 
 pub use lnurlcash_core::spend::decode_note;
-
-use crate::kernel::Kernel;
 
 /// What a key-path failure, an unknown note and a spent note all look like
 /// from outside: explaining a failed signature only helps someone guess.
@@ -19,7 +17,6 @@ pub const INVALID_K1: &str = crate::db::INVALID_K1;
 #[derive(Debug, Clone)]
 pub struct ParsedK1 {
     pub note_id: String,
-    k1: String,
     spend: Spend,
 }
 
@@ -37,70 +34,60 @@ pub fn parse(k1: &str) -> Option<ParsedK1> {
     }
     Some(ParsedK1 {
         note_id: hex::encode(spend.output_key()),
-        k1: k1.trim().to_string(),
         spend,
+    })
+}
+
+/// Core's verdict on one domain. The library failing to run is logged and
+/// counts as no, never as yes.
+fn core_says(result: Result<bool, lnurlcash_kernel::KernelError>) -> bool {
+    result.unwrap_or_else(|e| {
+        log::warn!("libbitcoinkernel: {e}");
+        false
     })
 }
 
 /// `None` if `parsed` opens its note at any of `domains` at time `now`, else
 /// why not. `locked_at` is when the mint credited the note.
-pub fn verify(
-    parsed: &ParsedK1,
-    locked_at: u64,
-    domains: &[String],
-    now: u64,
-    kernel: Option<&Kernel>,
-) -> Option<String> {
-    let mut reason = None;
-    for domain in domains {
-        let verdict = match check_spend(&parsed.k1, domain) {
-            Some(check) => check.verdict,
-            None => return Some(INVALID_K1.into()),
-        };
-        let verdict = match (verdict, &parsed.spend) {
-            (SpendVerdict::Unevaluated, Spend::ScriptPath { output_key, cw1 }) => match kernel {
-                Some(kernel) => match kernel.verify_script_path(output_key, domain, cw1) {
-                    Ok(true) => SpendVerdict::Opens,
-                    Ok(false) => {
-                        SpendVerdict::Fails("the witness does not satisfy the leaf".into())
-                    }
-                    Err(e) => {
-                        log::warn!("libbitcoinkernel: {e:#}");
-                        SpendVerdict::Unevaluated
-                    }
-                },
-                None => SpendVerdict::Unevaluated,
-            },
-            (verdict, _) => verdict,
-        };
-        match verdict {
-            SpendVerdict::Opens => {
-                reason = None;
-                break;
-            }
-            // only a legacy ck1 opens as legacy, and parse refused those
-            SpendVerdict::OpensLegacy => reason = Some(INVALID_K1.into()),
-            SpendVerdict::Fails(why) => reason = Some(why),
-            SpendVerdict::Unevaluated => {
-                reason = Some("this mint cannot evaluate this script".into())
-            }
+pub fn verify(parsed: &ParsedK1, locked_at: u64, domains: &[String], now: u64) -> Option<String> {
+    match &parsed.spend {
+        Spend::KeyPath {
+            output_key,
+            signature,
+        } => {
+            let opens = domains.iter().any(|domain| {
+                core_says(lnurlcash_kernel::verify_key_path(
+                    output_key, domain, signature,
+                ))
+            });
+            (!opens).then(|| INVALID_K1.into())
         }
+        Spend::ScriptPath { output_key, cw1 } => {
+            // consensus accepts these unconditionally: the mint must not
+            if let Some(reason) = check_leaf(cw1.control_block[0], &cw1.script) {
+                return Some(reason.into());
+            }
+            let witness: Vec<&[u8]> = cw1.witness.iter().map(Vec::as_slice).collect();
+            let opens = domains.iter().any(|domain| {
+                core_says(lnurlcash_kernel::verify_script_path(
+                    output_key,
+                    domain,
+                    &cw1.script,
+                    &cw1.control_block,
+                    &witness,
+                    cw1.locktime,
+                    cw1.sequence,
+                ))
+            });
+            if !opens {
+                // a cw1 discloses its whole secret already: its reason can't
+                // help anyone guess
+                return Some("bitcoin core rejected the spend".into());
+            }
+            check_time_claim(cw1.locktime, cw1.sequence, now, locked_at)
+        }
+        Spend::LegacyKeyPath { .. } => Some(INVALID_K1.into()),
     }
-    if domains.is_empty() {
-        return Some(INVALID_K1.into());
-    }
-    if let Some(reason) = reason {
-        // a key path says nothing more than "invalid"; a cw1 discloses its
-        // whole secret already, so its reason can't help anyone guess
-        return Some(match parsed.spend {
-            Spend::KeyPath { .. } => INVALID_K1.into(),
-            _ => reason,
-        });
-    }
-    if let Spend::ScriptPath { cw1, .. } = &parsed.spend {
-        return check_time_claim(cw1.locktime, cw1.sequence, now, locked_at);
-    }
-    None
 }
 
 #[cfg(test)]
@@ -126,12 +113,12 @@ mod tests {
             Some(parsed.note_id.clone()),
             note_id_of_ref(&hex::encode(h))
         );
-        assert_eq!(verify(&parsed, 0, &domains(), 1, None), None);
+        assert_eq!(verify(&parsed, 0, &domains(), 1), None);
         // the full cw1 names the same note and opens it too
         let cw1 = encode_cw1(&bearer_cw1(&preimage).unwrap()).unwrap();
         let full = parse(&cw1).unwrap();
         assert_eq!(full.note_id, parsed.note_id);
-        assert_eq!(verify(&full, 0, &domains(), 1, None), None);
+        assert_eq!(verify(&full, 0, &domains(), 1), None);
         let q: [u8; 32] = hex::decode(&parsed.note_id).unwrap().try_into().unwrap();
         assert_eq!(note_id_of_ref(&encode_cp1(&q)), Some(parsed.note_id));
     }
@@ -144,9 +131,9 @@ mod tests {
         let here = parse(&ck1_here).unwrap();
         let elsewhere = parse(&ck1_elsewhere).unwrap();
         assert_eq!(here.note_id, elsewhere.note_id);
-        assert_eq!(verify(&here, 0, &domains(), 1, None), None);
+        assert_eq!(verify(&here, 0, &domains(), 1), None);
         assert_eq!(
-            verify(&elsewhere, 0, &domains(), 1, None).as_deref(),
+            verify(&elsewhere, 0, &domains(), 1).as_deref(),
             Some(INVALID_K1)
         );
     }
@@ -170,8 +157,78 @@ mod tests {
         let mut cw1 = bearer_cw1(&preimage).unwrap();
         cw1.locktime = 1_700_000_000;
         let parsed = parse(&encode_cw1(&cw1).unwrap()).unwrap();
-        assert!(verify(&parsed, 0, &domains(), 1_600_000_000, None).is_some());
-        assert_eq!(verify(&parsed, 0, &domains(), 1_800_000_000, None), None);
+        assert!(verify(&parsed, 0, &domains(), 1_600_000_000).is_some());
+        assert_eq!(verify(&parsed, 0, &domains(), 1_800_000_000), None);
+    }
+
+    /// A leaf lnurlcash-core alone cannot judge: a hashlock behind a CLTV.
+    #[test]
+    fn core_judges_any_leaf() {
+        use lnurlcash_core::recoverable::Cw1;
+        use lnurlcash_core::spend::{NUMS_H, tapleaf_hash, taproot_tweak};
+
+        let preimage = [9u8; 32];
+        let mut script = vec![0x04];
+        script.extend_from_slice(&1_700_000_000u32.to_le_bytes());
+        script.extend_from_slice(&[0xb1, 0x75, 0xa8, 0x20]); // CLTV DROP SHA256 <32>
+        script.extend_from_slice(&Sha256::digest(preimage));
+        script.push(0x87); // EQUAL
+        let tweak = taproot_tweak(&NUMS_H, &tapleaf_hash(&script, 0xc0)).unwrap();
+        let mut control_block = vec![0xc0 | tweak.parity];
+        control_block.extend_from_slice(&NUMS_H);
+        let cw1 = Cw1 {
+            locktime: 1_700_000_001,
+            sequence: 0xffff_fffe,
+            script,
+            control_block,
+            witness: vec![preimage.to_vec()],
+        };
+        let parsed = parse(&encode_cw1(&cw1).unwrap()).unwrap();
+        assert_eq!(parsed.note_id, hex::encode(tweak.output_key));
+        // Core accepts it; the mint's clock decides when
+        assert_eq!(verify(&parsed, 0, &domains(), 1_800_000_000), None);
+        assert!(verify(&parsed, 0, &domains(), 1_600_000_000).is_some());
+        // a locktime below the script's is Core's to refuse
+        let early = Cw1 {
+            locktime: 1_600_000_000,
+            ..cw1.clone()
+        };
+        let parsed = parse(&encode_cw1(&early).unwrap()).unwrap();
+        assert_eq!(
+            verify(&parsed, 0, &domains(), 1_800_000_000).as_deref(),
+            Some("bitcoin core rejected the spend")
+        );
+        // a wrong preimage too
+        let wrong = Cw1 {
+            witness: vec![vec![1; 32]],
+            ..cw1
+        };
+        let parsed = parse(&encode_cw1(&wrong).unwrap()).unwrap();
+        assert!(verify(&parsed, 0, &domains(), 1_800_000_000).is_some());
+    }
+
+    #[test]
+    fn upgrade_hooks_are_refused_before_core_sees_them() {
+        use lnurlcash_core::recoverable::Cw1;
+        use lnurlcash_core::spend::{NUMS_H, tapleaf_hash, taproot_tweak};
+
+        // OP_SUCCESS80: consensus would accept it unconditionally
+        let script = vec![0x50];
+        let tweak = taproot_tweak(&NUMS_H, &tapleaf_hash(&script, 0xc0)).unwrap();
+        let mut control_block = vec![0xc0 | tweak.parity];
+        control_block.extend_from_slice(&NUMS_H);
+        let cw1 = Cw1 {
+            locktime: 0,
+            sequence: 0xffff_ffff,
+            script,
+            control_block,
+            witness: vec![],
+        };
+        let parsed = parse(&encode_cw1(&cw1).unwrap()).unwrap();
+        assert_eq!(
+            verify(&parsed, 0, &domains(), 1).as_deref(),
+            Some("leaf uses a reserved OP_SUCCESS opcode")
+        );
     }
 
     #[test]

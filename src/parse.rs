@@ -7,12 +7,11 @@ use anyhow::anyhow;
 use cln_plugin::ConfiguredPlugin;
 
 use crate::{
-    OPT_BASE_FEE_MSAT, OPT_BASE_URL, OPT_BITCOINKERNEL, OPT_DATABASE, OPT_DESCRIPTION,
-    OPT_FEE_PERCENT_PPM, OPT_LISTEN, OPT_MAX_K1S, OPT_MAX_SENDABLE, OPT_MIN_MINT, OPT_MIN_SENDABLE,
-    OPT_NIP05, OPT_ONION_URL, OPT_REGISTRATION, OPT_SUNSET_DATE, OPT_SUNSET_MINT, OPT_TITLE,
-    OPT_USERNAME, OPT_VERIFY,
+    OPT_BASE_FEE_MSAT, OPT_BASE_URL, OPT_DATABASE, OPT_DESCRIPTION, OPT_FEE_PERCENT_PPM,
+    OPT_LISTEN, OPT_MAX_K1S, OPT_MAX_SENDABLE, OPT_MIN_MINT, OPT_MIN_SENDABLE, OPT_NIP05,
+    OPT_ONION_URL, OPT_REGISTRATION, OPT_SUNSET_DATE, OPT_SUNSET_MINT, OPT_TITLE, OPT_USERNAME,
+    OPT_VERIFY,
     db::NoteStore,
-    kernel::Kernel,
     node::Node,
     structs::{PluginState, Settings},
 };
@@ -88,26 +87,10 @@ pub fn get_startup_options(
         .map_err(|e| anyhow!("Could not open database {database_path}: {e}"))?;
     log::info!("Using database {database_path}");
 
-    let kernel = match plugin.option(&OPT_BITCOINKERNEL)? {
-        Some(path) => {
-            let kernel = Kernel::load(&path)?;
-            log::info!("Evaluating tapscript leaves with {path}");
-            Some(kernel)
-        }
-        None => {
-            log::info!(
-                "`{}` unset: only key paths and bearer hashlocks open notes",
-                OPT_BITCOINKERNEL.name()
-            );
-            None
-        }
-    };
-
     Ok(PluginState::new(
         settings,
         store,
         Node::new(rpc_path),
-        kernel,
         listen_address,
     ))
 }

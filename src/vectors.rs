@@ -31,11 +31,8 @@ fn key_path_spend_opens_its_note_at_its_domain_only() {
         spend::note_id_of_ref(s(v, "cp1")).as_deref(),
         Some(s(v, "Q"))
     );
-    assert_eq!(
-        spend::verify(&parsed, 0, &[s(v, "domain").into()], 1, None),
-        None
-    );
-    assert!(spend::verify(&parsed, 0, &["other.example".into()], 1, None).is_some());
+    assert_eq!(spend::verify(&parsed, 0, &[s(v, "domain").into()], 1), None);
+    assert!(spend::verify(&parsed, 0, &["other.example".into()], 1).is_some());
 }
 
 #[test]
@@ -67,7 +64,7 @@ fn bearer_note_every_form_names_one_note() {
         assert_eq!(parsed.note_id, q);
         // a bearer leaf checks no signature: any domain
         assert_eq!(
-            spend::verify(&parsed, 0, &["anywhere.example".into()], 1, None),
+            spend::verify(&parsed, 0, &["anywhere.example".into()], 1),
             None
         );
     }

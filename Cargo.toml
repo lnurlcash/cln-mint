@@ -16,13 +16,14 @@ cln-rpc = "0.7"
 
 # 0.2.0, pinned by rev: early 0.x tracking a draft spec, and not on crates.io yet
 lnurlcash-core = { git = "https://github.com/lnurlcash/lnurlcash-core", rev = "bf0c932beae01ecaef604024b96bf66ca86034b1" }
+# Bitcoin Core's script interpreter, built from source and linked statically.
+# The path is for developing both together; releases resolve the version.
+lnurlcash-kernel = { version = "0.2.0", path = "../lnurlcashkernel" }
 # the versions lnurlcash-core uses
 secp256k1 = "0.33"
 bech32 = "0.11"
 
 hex = "0.4"
-# libbitcoinkernel, loaded at runtime when cln-mint-bitcoinkernel names it
-libloading = "0.8"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 rand = "0.9"
 rusqlite = { version = "0.40", features = ["bundled"] }

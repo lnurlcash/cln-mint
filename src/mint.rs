@@ -395,7 +395,6 @@ impl PluginState {
             record.locked_at,
             &self.settings.spend_domains(),
             db::now(),
-            self.kernel.as_deref(),
         ) {
             return reject(reason);
         }

@@ -2,7 +2,7 @@
 
 A Core Lightning plugin that runs an [LNURLcash](https://github.com/lnurl/luds/blob/luds/25.md) mint: bearer notes on LNURL-withdraw links ([LUD-25](https://github.com/lnurl/luds/blob/luds/25.md)), deterministic notes and Lightning Address auto-mint ([LUD-26](https://github.com/lnurl/luds/blob/luds/26.md)). It does what [lnurl-mint](https://github.com/dni/lnurl-mint) does, but inside `lightningd`: the node it runs in is its funding source, invoice watcher and certificate signer.
 
-Note handling (decoding, spends, sighashes, `cx1` derivation, `cs1` encoding) comes from [`lnurlcash-core`](https://github.com/lnurlcash/lnurlcash-core). The plugin layout follows [clnaddress](https://github.com/daywalker90/clnaddress).
+Note handling (decoding, sighashes, `cx1` derivation, `cs1` encoding, the leaf and time rules) comes from [`lnurlcash-core`](https://github.com/lnurlcash/lnurlcash-core). Whether a spend opens its note is decided by Bitcoin Core's own interpreter, through [`lnurlcash-kernel`](https://github.com/lnurlcash/lnurlcashkernel), which compiles `libbitcoinkernel` into the plugin. The plugin layout follows [clnaddress](https://github.com/daywalker90/clnaddress).
 
 * [Installation](#installation)
 * [Building](#building)
@@ -28,11 +28,13 @@ The mint is then payable at `mint@mint.example` (and at `_@mint.example`), and i
 
 ## Building
 
-You need Rust 1.85 or newer:
+You need Rust 1.85 or newer, a C++20 compiler, CMake ≥ 3.22 and Boost ≥ 1.74 headers (`apt install cmake libboost-dev`, `brew install boost`). `lnurlcash-kernel` compiles Bitcoin Core's kernel from source and links it statically, so the first build takes a few minutes:
 
 `cargo build --release`
 
-The binary is then at `target/release/cln-mint`.
+The binary is then at `target/release/cln-mint`. It has no runtime dependencies beyond libc and the C++ runtime.
+
+While `lnurlcash-kernel` is unreleased, `Cargo.toml` takes it from `../lnurlcashkernel`. Check that repository out next to this one, with its `vendor/bitcoin` submodule.
 
 ## Options
 
@@ -54,7 +56,6 @@ The binary is then at `target/release/cln-mint`.
 | `cln-mint-verify` | `true` | Serve LUD-21 `/verify/<payment_hash>`. |
 | `cln-mint-username-registration` | `true` | Let wallets register a Lightning Address against a `cx1` (LUD-26). |
 | `cln-mint-nip05` | `true` | Serve `/.well-known/nostr.json` for registered usernames. |
-| `cln-mint-bitcoinkernel` | | Path to `libbitcoinkernel`. See [Script spends](#script-spends). |
 | `cln-mint-title`, `cln-mint-description` | | Text for the front page. |
 
 ## Endpoints
@@ -87,15 +88,11 @@ Every LNURL endpoint answers HTTP 200, with `{"status": "ERROR", "reason": ...}`
 
 * **Notes.** A note is a taproot output key `Q`, stored as `hex(Q)` → value. The mint never sees or stores anything that can spend it. Burned notes are kept, so a `Q` is never credited twice.
 * **Minting.** The wallet names its note as the LUD-12 comment. The plugin creates the invoice with `invoice` (`deschashonly`). A `waitanyinvoice` loop credits the note once the invoice is paid. It keeps its `pay_index` in the database, so payments that land while the plugin is down are credited on startup. A lookup also settles lazily from `listinvoices`.
-* **Spends.** `ck1` key paths, bearer preimages and full `cw1`s are decoded and checked by `lnurlcash-core`, against every host the mint answers on. Timelocks are checked against the mint's clock. Legacy 65-byte `ck1`s are refused.
+* **Spends.** `ck1` key paths, bearer preimages and full `cw1`s are decoded by `lnurlcash-core`. Bitcoin Core then verifies each one as input 0 of LUD-25's canonical spend transaction, with every consensus flag, against every host the mint answers on. So any tapscript leaf consensus accepts opens its note, except the leaf versions and `OP_SUCCESSx` opcodes LUD-25 refuses. Timelocks are checked against the mint's clock. Legacy 65-byte `ck1`s are refused.
 * **Certificates.** `cs1` certificates come from the node's `signmessage` over `LNURLcash:<amount_msat>:<hex(Q)>`, so `mintPubkey` is the node id.
 * **Melts.** A melt reserves its note and answers at once (LUD-03), then pays with `xpay`, capping the routing fee at the note's mint fee (at least 0.5% or 5 sat). The note is burned only on a confirmed payment and restored only on a confirmed failure; `listpays` is the arbiter. Anything else stays pending, and a reconciler retries it every minute. An invoice the mint issued, or one already used by a melt, is refused.
 * **Retries.** A rotate, split or merge repeated with the same notes, outputs and amount gets its original answer.
 * **LUD-26.** Registration proofs are BIP-340 signatures by the branch's purpose-0 index-0 key over `sha256("LNURLcash:<register|unregister>:<domain>:<username>")`. Auto-mint picks the next purpose-2 index whose key is not already in use.
-
-### Script spends
-
-`lnurlcash-core` evaluates key paths and the bearer hashlock itself. LUD-25 asks a mint to accept any tapscript leaf consensus accepts. To do that, point `cln-mint-bitcoinkernel` at a `libbitcoinkernel` build (for example the one [`lnurlcash-kernel`](https://pypi.org/project/lnurlcash-kernel/) bundles). The plugin loads it at startup and has Bitcoin Core evaluate every other leaf as input 0 of the canonical spend transaction. Without it, such spends are refused with `this mint cannot evaluate this script`.
 
 ## Differences from lnurl-mint
 
@@ -104,15 +101,15 @@ Every LNURL endpoint answers HTTP 200, with `{"status": "ERROR", "reason": ...}`
 * Mint invoices commit to the payRequest metadata by `description_hash`, as LUD-06 asks.
 * The fixed identity always names itself `<cln-mint-username>@host` in `text/identifier`, whichever alias was queried, so the invoice can commit to the same metadata.
 * NIP-57 zaps are not implemented. A `nostr` parameter is refused.
-* `libbitcoinkernel` is optional. Without it, only key paths and bearer notes open.
+* Bitcoin Core is compiled into the plugin rather than loaded from a Python wheel.
 
 ## Tests
 
-`cargo test` runs the unit tests, including LUD-25's and LUD-26's own test vectors (`tests/vectors/`). With `LNURLCASHKERNEL_LIB=/path/to/libbitcoinkernel.so` set, it also runs the tests against Bitcoin Core's interpreter.
+`cargo test` runs the unit tests, including LUD-25's and LUD-26's own test vectors (`tests/vectors/`), all against Bitcoin Core's interpreter.
 
 The integration tests in `tests/` use `pyln-testing`, as CI does. To run them without installing CLN and bitcoind:
 
 ```
-docker build -f tests/Dockerfile -t cln-mint-tests .
+docker build --build-context lnurlcashkernel=../lnurlcashkernel -f tests/Dockerfile -t cln-mint-tests .
 docker run --rm cln-mint-tests
 ```

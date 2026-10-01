@@ -126,6 +126,10 @@ jobs:
       if:  ${{ inputs.tagged-release == false }}
       uses: dtolnay/rust-toolchain@stable
 
+    - name: Install CMake and Boost headers (lnurlcash-kernel builds Bitcoin Core's kernel)
+      if:  ${{ inputs.tagged-release == false }}
+      run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libboost-dev
+
     - name: Install cargo-binstall
       if: ${{ inputs.tagged-release == false }}
       uses: taiki-e/install-action@cargo-binstall

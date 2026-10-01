@@ -17,9 +17,6 @@ def mint_node_opts(get_plugin, port, base_url, **extra):
         "cln-mint-listen": f"127.0.0.1:{port}",
         "cln-mint-base-fee-msat": BASE_FEE_MSAT,
     }
-    kernel = os.environ.get("LNURLCASHKERNEL_LIB")
-    if kernel:
-        opts["cln-mint-bitcoinkernel"] = kernel
     opts.update(extra)
     return opts
 

@@ -3,5 +3,6 @@ plugin:
   version: 0.1.0
   lang: rust
   install: |
+    # needs CMake and Boost headers: Bitcoin Core's kernel is compiled in
     cargo build --release && cp target/release/cln-mint . && cargo clean
   main: cln-mint
