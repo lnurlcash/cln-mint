@@ -2,7 +2,7 @@
 
 A Core Lightning plugin that runs an [LNURLcash](https://github.com/lnurl/luds/blob/luds/25.md) mint: bearer notes on LNURL-withdraw links ([LUD-25](https://github.com/lnurl/luds/blob/luds/25.md)), deterministic notes and Lightning Address auto-mint ([LUD-26](https://github.com/lnurl/luds/blob/luds/26.md)). It does what [lnurl-mint](https://github.com/dni/lnurl-mint) does, but inside `lightningd`: the node it runs in is its funding source, invoice watcher and certificate signer.
 
-Note handling (decoding, sighashes, `cx1` derivation, `cs1` encoding, the leaf and time rules) comes from [`lnurlcash-core`](https://github.com/lnurlcash/lnurlcash-core). Whether a spend opens its note is decided by Bitcoin Core's own interpreter, through [`lnurlcash-kernel`](https://github.com/lnurlcash/lnurlcashkernel), which compiles `libbitcoinkernel` into the plugin. The plugin layout follows [clnaddress](https://github.com/daywalker90/clnaddress).
+Note handling (decoding, sighashes, `cx1` derivation, `cs1` encoding, the leaf and time rules) comes from [`lnurlcash-core`](https://github.com/lnurlcash/lnurlcash-core). Whether a spend opens its note is decided by Bitcoin Core's own interpreter, through [`lnurlcash-kernel`](https://github.com/lnurlcash/kernel), which compiles `libbitcoinkernel` into the plugin. The plugin layout follows [clnaddress](https://github.com/daywalker90/clnaddress).
 
 * [Installation](#installation)
 * [Building](#building)
@@ -33,8 +33,6 @@ You need Rust 1.85 or newer, a C++20 compiler, CMake ≥ 3.22 and Boost ≥ 1.74
 `cargo build --release`
 
 The binary is then at `target/release/cln-mint`. It has no runtime dependencies beyond libc and the C++ runtime.
-
-While `lnurlcash-kernel` is unreleased, `Cargo.toml` takes it from `../lnurlcashkernel`. Check that repository out next to this one, with its `vendor/bitcoin` submodule.
 
 ## Options
 
@@ -110,6 +108,6 @@ Every LNURL endpoint answers HTTP 200, with `{"status": "ERROR", "reason": ...}`
 The integration tests in `tests/` use `pyln-testing`, as CI does. To run them without installing CLN and bitcoind:
 
 ```
-docker build --build-context lnurlcashkernel=../lnurlcashkernel -f tests/Dockerfile -t cln-mint-tests .
+docker build -f tests/Dockerfile -t cln-mint-tests .
 docker run --rm cln-mint-tests
 ```

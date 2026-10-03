@@ -15,7 +15,7 @@ use lnurlcash_core::{
     },
     signature::{address_proof_digest, note_signature_message_for_hash},
 };
-use secp256k1::{Message, Secp256k1, XOnlyPublicKey, schnorr::Signature};
+use secp256k1::{XOnlyPublicKey, schnorr};
 use serde_json::{Map, Value, json};
 
 use crate::{
@@ -90,12 +90,13 @@ pub fn valid_username(username: &str) -> bool {
 }
 
 fn decode_npub(npub: &str) -> Option<[u8; 32]> {
-    use bech32::FromBase32;
-    let (hrp, data, variant) = bech32::decode(npub).ok()?;
-    if hrp != "npub" || variant != bech32::Variant::Bech32 {
+    use bech32::{Bech32, primitives::decode::CheckedHrpstring};
+    // NIP-19 is classic bech32, never bech32m
+    let checked = CheckedHrpstring::new::<Bech32>(npub).ok()?;
+    if checked.hrp().to_lowercase() != "npub" {
         return None;
     }
-    Vec::<u8>::from_base32(&data).ok()?.try_into().ok()
+    checked.byte_iter().collect::<Vec<u8>>().try_into().ok()
 }
 
 /// A cx1 as stored: `hex(P || chain_code)`.
@@ -125,17 +126,16 @@ pub(crate) fn owns_branch(
     let Ok(digest) = address_proof_digest(action, domain, username) else {
         return false;
     };
-    let (Ok(sig), Ok(pk)) = (
-        hex::decode(sig.trim())
-            .map_err(|_| ())
-            .and_then(|b| Signature::from_slice(&b).map_err(|_| ())),
-        XOnlyPublicKey::from_slice(&pk0),
-    ) else {
+    let Some(sig) = hex::decode(sig.trim())
+        .ok()
+        .and_then(|b| <[u8; 64]>::try_from(b).ok())
+    else {
         return false;
     };
-    Secp256k1::verification_only()
-        .verify_schnorr(&sig, &Message::from_digest(digest), &pk)
-        .is_ok()
+    let Ok(pk) = XOnlyPublicKey::from_byte_array(pk0) else {
+        return false;
+    };
+    schnorr::verify(&schnorr::Signature::from_byte_array(sig), &digest, &pk).is_ok()
 }
 
 impl PluginState {
@@ -852,9 +852,8 @@ mod tests {
     fn registration_proofs_bind_action_domain_and_username() {
         let branch_sk = [11u8; 32];
         let chain_code = [2u8; 32];
-        let secp = Secp256k1::new();
-        let kp = secp256k1::Keypair::from_seckey_slice(&secp, &branch_sk).unwrap();
-        let point = kp.x_only_public_key().0.serialize();
+        let kp = secp256k1::Keypair::from_secret_bytes(branch_sk).unwrap();
+        let point = kp.x_only_public_key().0.to_byte_array();
         let branch_hex = hex::encode([point, chain_code].concat());
         let sk0 = derive_note_secret_key(&branch_sk, &chain_code, PURPOSE_WALLET, 0).unwrap();
         let sig =

@@ -142,9 +142,8 @@ mod tests {
     fn derived_keys_match_cx1_derivation() {
         let branch_sk = [9u8; 32];
         let chain = [1u8; 32];
-        let secp = secp256k1::Secp256k1::new();
-        let kp = secp256k1::Keypair::from_seckey_slice(&secp, &branch_sk).unwrap();
-        let p = kp.x_only_public_key().0.serialize();
+        let kp = secp256k1::Keypair::from_secret_bytes(branch_sk).unwrap();
+        let p = kp.x_only_public_key().0.to_byte_array();
         let sk = derive_note_secret_key(&branch_sk, &chain, 2, 5).unwrap();
         let q = derive_note_pubkey(&p, &chain, 2, 5).unwrap();
         let ck1 = encode_ck1(&sign_note_ownership(&sk, "mint.example").unwrap());

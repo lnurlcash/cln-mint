@@ -1,17 +1,10 @@
 # Runs the pyln-testing suite in a container, the way CI does:
-#   docker build --build-context lnurlcashkernel=../lnurlcashkernel \
-#     -f tests/Dockerfile -t cln-mint-tests .
+#   docker build -f tests/Dockerfile -t cln-mint-tests .
 #   docker run --rm cln-mint-tests
 FROM rust:1-bookworm AS build
 # lnurlcash-kernel builds Bitcoin Core's kernel: CMake and Boost headers
 RUN apt-get update && apt-get install -y --no-install-recommends cmake ninja-build libboost-dev \
     && rm -rf /var/lib/apt/lists/*
-# the path dependency in Cargo.toml, ../lnurlcashkernel
-WORKDIR /lnurlcashkernel
-COPY --from=lnurlcashkernel Cargo.toml Cargo.lock ./
-COPY --from=lnurlcashkernel rust ./rust
-COPY --from=lnurlcashkernel scripts ./scripts
-COPY --from=lnurlcashkernel vendor/bitcoin ./vendor/bitcoin
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src

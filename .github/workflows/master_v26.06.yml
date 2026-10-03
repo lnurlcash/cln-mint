@@ -3,7 +3,7 @@ name: master on CLN v26.06.x
 on:
     push:
         branches:
-            - master
+            - main
         paths-ignore:
             - 'tools/**'
             - 'CHANGELOG.md'
